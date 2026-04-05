@@ -126,7 +126,7 @@ Return ad_copies for the top 3-4 highest scoring platforms.`,
       },
       body: JSON.stringify({
         model: "claude-opus-4-6",
-        max_tokens: 4096,
+        max_tokens: 8192,
         stream: true,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: contentBlocks }],
