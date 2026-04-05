@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
-export const runtime = "edge";
-
 const SYSTEM_PROMPT = `You are an elite digital marketing strategist and demographic analyst with 15+ years of experience. You have deep knowledge of consumer behavior data, platform demographics, and advertising performance metrics.
 
 Your analysis draws from these authoritative data sources:
