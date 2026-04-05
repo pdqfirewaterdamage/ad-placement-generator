@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 
 const SYSTEM_PROMPT = `You are an elite digital marketing strategist and demographic analyst with 15+ years of experience. You have deep knowledge of consumer behavior data, platform demographics, and advertising performance metrics.
 
@@ -41,14 +40,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
     return NextResponse.json(
       { error: "ANTHROPIC_API_KEY is not configured." },
       { status: 500 }
     );
   }
-
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   try {
     const formData = await req.formData();
@@ -118,24 +116,68 @@ Return at least 8 platforms covering Meta/Facebook, Instagram, TikTok, Pinterest
 Return ad_copies for the top 3-4 highest scoring platforms.`,
     });
 
-    const anthropicStream = client.messages.stream({
-      model: "claude-opus-4-6",
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: contentBlocks }],
+    // Call Anthropic API directly via fetch (avoids SDK Node.js compat issues in CF Workers)
+    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-opus-4-6",
+        max_tokens: 4096,
+        stream: true,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: contentBlocks }],
+      }),
     });
 
+    if (!anthropicRes.ok) {
+      const errText = await anthropicRes.text();
+      return NextResponse.json(
+        { error: `Anthropic API error (${anthropicRes.status}): ${errText}` },
+        { status: 500 }
+      );
+    }
+
+    // Parse SSE stream and forward only text deltas to the client
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
+        const reader = anthropicRes.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
         try {
-          anthropicStream.on("text", (text: string) => {
-            controller.enqueue(encoder.encode(text));
-          });
-          await anthropicStream.finalMessage();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const data = line.slice(6).trim();
+              if (data === "[DONE]") continue;
+              try {
+                const parsed = JSON.parse(data);
+                if (
+                  parsed.type === "content_block_delta" &&
+                  parsed.delta?.type === "text_delta" &&
+                  parsed.delta?.text
+                ) {
+                  controller.enqueue(encoder.encode(parsed.delta.text));
+                }
+              } catch {
+                // ignore malformed SSE lines
+              }
+            }
+          }
           controller.close();
         } catch (err) {
-          // Pass error details through the stream so the client can surface them
           const errMsg = err instanceof Error ? err.message : String(err);
           controller.enqueue(encoder.encode(`STREAM_ERROR:${errMsg}`));
           controller.close();
