@@ -118,30 +118,35 @@ Return at least 8 platforms covering Meta/Facebook, Instagram, TikTok, Pinterest
 Return ad_copies for the top 3-4 highest scoring platforms.`,
     });
 
-    const stream = client.messages.stream({
+    const anthropicStream = client.messages.stream({
       model: "claude-opus-4-6",
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: contentBlocks }],
     });
 
-    const message = await stream.finalMessage();
-    const textBlock = message.content.find((b) => b.type === "text");
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const event of anthropicStream) {
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "text_delta"
+            ) {
+              controller.enqueue(encoder.encode(event.delta.text));
+            }
+          }
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    });
 
-    if (!textBlock || textBlock.type !== "text") {
-      return NextResponse.json(
-        { error: "No analysis returned from AI." },
-        { status: 500 }
-      );
-    }
-
-    let raw = textBlock.text.trim();
-    if (raw.startsWith("```")) {
-      raw = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-    }
-
-    const result = JSON.parse(raw);
-    return NextResponse.json(result);
+    return new Response(readable, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   } catch (err) {
     console.error("Analysis error:", err);
     const message =

@@ -42,12 +42,26 @@ export default function Home() {
         body: formData,
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
+        const data = await res.json();
         setError(data.error || "Analysis failed. Please try again.");
         return;
       }
+
+      // Stream the response to avoid Cloudflare 30s timeout
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let raw = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += decoder.decode(value, { stream: true });
+      }
+      raw = raw.trim();
+      if (raw.startsWith("```")) {
+        raw = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+      }
+      const data = JSON.parse(raw);
 
       setResult(data as AnalysisResult);
 
@@ -58,8 +72,12 @@ export default function Home() {
           block: "start",
         });
       }, 100);
-    } catch {
-      setError("Network error. Please check your connection and try again.");
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        setError("Analysis failed: invalid response from AI. Please try again.");
+      } else {
+        setError("Connection error. Please check your connection and try again.");
+      }
     } finally {
       setIsLoading(false);
     }
