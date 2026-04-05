@@ -129,17 +129,16 @@ Return ad_copies for the top 3-4 highest scoring platforms.`,
     const readable = new ReadableStream({
       async start(controller) {
         try {
-          for await (const event of anthropicStream) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
-              controller.enqueue(encoder.encode(event.delta.text));
-            }
-          }
+          anthropicStream.on("text", (text: string) => {
+            controller.enqueue(encoder.encode(text));
+          });
+          await anthropicStream.finalMessage();
           controller.close();
         } catch (err) {
-          controller.error(err);
+          // Pass error details through the stream so the client can surface them
+          const errMsg = err instanceof Error ? err.message : String(err);
+          controller.enqueue(encoder.encode(`STREAM_ERROR:${errMsg}`));
+          controller.close();
         }
       },
     });

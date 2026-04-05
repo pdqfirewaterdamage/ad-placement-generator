@@ -58,6 +58,9 @@ export default function Home() {
         raw += decoder.decode(value, { stream: true });
       }
       raw = raw.trim();
+      if (raw.startsWith("STREAM_ERROR:")) {
+        throw new Error(raw.slice("STREAM_ERROR:".length));
+      }
       if (raw.startsWith("```")) {
         raw = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
       }
@@ -74,7 +77,9 @@ export default function Home() {
       }, 100);
     } catch (err) {
       if (err instanceof SyntaxError) {
-        setError("Analysis failed: invalid response from AI. Please try again.");
+        setError("Analysis failed: AI returned malformed JSON. Please try again.");
+      } else if (err instanceof Error) {
+        setError(err.message);
       } else {
         setError("Connection error. Please check your connection and try again.");
       }
