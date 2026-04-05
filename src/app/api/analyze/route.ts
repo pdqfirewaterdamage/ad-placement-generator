@@ -88,32 +88,38 @@ export async function POST(req: NextRequest) {
 
     contentBlocks.push({
       type: "text",
-      text: `Analyze this product and generate a comprehensive advertising strategy:
+      text: `Analyze this product and output a JSON advertising strategy. Be concise.
 
-PRODUCT DESCRIPTION:
-${description}
+PRODUCT: ${description}
+${imageFiles.length > 0 ? `(${imageFiles.length} image(s) provided — use visual cues for positioning.)` : ""}
 
-${imageFiles.length > 0 ? `(${imageFiles.length} product image(s) provided above — analyze them for visual positioning cues, target market signals, quality level, and aesthetic.)` : "(No product images provided — base your analysis entirely on the description.)"}
+Respond with ONLY a valid JSON object — no markdown, no code fences. Exactly these keys:
 
-Please provide:
-1. A clear product summary
-2. Detailed ideal demographic profile with reasoning backed by real consumer research data
-3. All relevant advertising platforms ranked by effectiveness (score each 1-10), including Meta/Facebook, Instagram, TikTok, Pinterest, LinkedIn, YouTube, Google Ads, Twitter/X, Reddit, Snapchat, Yelp, and Amazon (where applicable)
-4. Ad copy for the top 3-4 most effective platforms — make it compelling, platform-native, and targeted to the demographic
-5. The specific data sources you drew from for demographic and platform data
+{
+  "product_summary": "2-3 sentence summary",
+  "demographics": {
+    "age_range": "e.g. 18-34",
+    "primary_age": "e.g. 25-34",
+    "gender": { "male_percent": 40, "female_percent": 55, "nonbinary_percent": 5 },
+    "locations": ["US", "Canada"],
+    "interests": ["interest1", "interest2", "interest3"],
+    "behaviors": ["behavior1", "behavior2"],
+    "income_level": "middle income",
+    "education_level": "some college or higher",
+    "reasoning": "1-2 sentences why"
+  },
+  "platforms": [
+    { "name": "Instagram", "score": 9, "category": "Social", "why": "brief reason", "best_format": "Reels", "audience_size": "2B MAU", "cpm_estimate": "$8-12", "priority": "primary" }
+  ],
+  "ad_copies": [
+    { "platform": "Instagram", "headline": "...", "body": "...", "cta": "Shop Now", "hashtags": ["#tag1"], "reasoning": "brief reason" }
+  ],
+  "data_sources": [
+    { "name": "Pew Research", "description": "Social media demographics", "url": "https://pewresearch.org", "data_type": "Survey" }
+  ]
+}
 
-IMPORTANT: Respond with ONLY a valid JSON object — no markdown, no code fences, no explanation. The JSON must have exactly these top-level keys: product_summary, demographics, platforms, ad_copies, data_sources.
-
-demographics must include: age_range, primary_age, gender (with male_percent, female_percent, nonbinary_percent), locations (array), interests (array), behaviors (array), income_level, education_level, reasoning.
-
-Each platform in platforms must include: name, score (1-10 number), category, why, best_format, audience_size, cpm_estimate, priority ("primary"|"secondary"|"optional").
-
-Each item in ad_copies must include: platform, headline, body, cta, hashtags (array, empty if not applicable), reasoning.
-
-Each item in data_sources must include: name, description, url, data_type.
-
-Return at least 8 platforms covering Meta/Facebook, Instagram, TikTok, Pinterest, LinkedIn, YouTube, Google Ads, Twitter/X, Reddit, Yelp, Snapchat, Amazon (score each appropriately).
-Return ad_copies for the top 3-4 highest scoring platforms.`,
+Return the top 5 platforms scored 1-10. Return only 1 ad copy for the highest-scoring platform. Keep all text fields brief.`,
     });
 
     // Call Anthropic API directly via fetch (avoids SDK Node.js compat issues in CF Workers)
@@ -125,8 +131,8 @@ Return ad_copies for the top 3-4 highest scoring platforms.`,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-6",
-        max_tokens: 8192,
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 2048,
         stream: true,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: contentBlocks }],
